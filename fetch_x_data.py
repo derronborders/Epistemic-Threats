@@ -6,9 +6,9 @@ import time
 # Function to authenticate with the X (Twitter) API
 def authenticate_x_api():
     # Replace these with your X API credentials
-    API_KEY = "pk2rLGWCeIoR3SWqN0Cs3kTB6"
-    API_SECRET = "8Zl9TEZts6WWN3QLcICDMhpSVdxb99uTAJlsqrBHIYVXCmBRUS"
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAABd9xgEAAAAAQAZBxQ7JOFDX8P3wtJ7Ykz9AZaI%3DtIeG61VqyUBOjB0HORtEW4102z8AxjO6AitJGdN7k2gI3AzvbL"
+    API_KEY = ""
+    API_SECRET = ""
+    BEARER_TOKEN = ""
 
     client = tweepy.Client(bearer_token=BEARER_TOKEN)
     return client
