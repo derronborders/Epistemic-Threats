@@ -227,7 +227,7 @@ if __name__ == "__main__":
 
     # Set up date ranges
     start_date = datetime(2024, 11, 7)
-    end_date = datetime(2024, 12, 18)
+    end_date = datetime(2024, 11, 14)
     delta = timedelta(days=1)  # 1-day intervals
 
     all_posts = []

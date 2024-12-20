@@ -1,0 +1,18 @@
+Create the Virtual Environment:
+
+python3 -m venv venv
+
+Activate the Virtual Environment:
+
+
+source venv/bin/activatep
+
+pip install requests
+
+Get out of Virtual Environment:
+
+deactivate
+
+Delete environment:
+
+rm -rf venv
