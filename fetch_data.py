@@ -1,4 +1,4 @@
-import requests # type: ignore
+import requests  # type: ignore
 import csv
 from datetime import datetime, timedelta
 import time
@@ -109,7 +109,6 @@ def fetch_thread_details(uri, fetch_replies=False):
         }
 
 # Function to process posts
-# Includes the thread details: parent post (if reply), quoted post (if quote), and up to 20 replies
 def process_posts(posts):
     cleaned_data = []
     for post in posts:
@@ -159,6 +158,19 @@ def process_posts(posts):
         thread_details = fetch_thread_details(post.get("uri"), fetch_replies=True)
         replies = thread_details.get("Replies", [])
 
+        # Extract image links (if available)
+        image_links = []
+        embeds = record.get("embed", {}).get("images", [])
+        for embed in embeds:
+            if "fullsize" in embed:
+                image_links.append(embed["fullsize"])
+
+        # Extract general embedded links
+        general_links = []
+        external_links = record.get("embed", {}).get("external", {})
+        if external_links:
+            general_links.append(external_links.get("uri", ""))
+
         # Prepare base data for the main post
         post_data = {
             "DID": did,
@@ -179,7 +191,9 @@ def process_posts(posts):
             "Quoted Handle": quoted_details["Handle"],
             "Quoted Display Name": quoted_details["Display Name"],
             "Quoted CreatedAt": quoted_details["CreatedAt"],
-            "Quoted Text": quoted_details["Text"]
+            "Quoted Text": quoted_details["Text"],
+            "Image Links": "; ".join(image_links),  # Join multiple image links with a semicolon
+            "General Links": "; ".join(general_links)  # Join multiple general links with a semicolon
         }
 
         # Add replies as separate fields
@@ -200,7 +214,9 @@ def save_to_csv(data, filename):
     base_columns = [
         "DID", "Handle", "Display Name", "CreatedAt", "Text", "ReplyCount", "RepostCount", "LikeCount", "QuoteCount",
         "Parent DID", "Parent Handle", "Parent Display Name", "Parent CreatedAt", "Parent Text",
-        "Quoted DID", "Quoted Handle", "Quoted Display Name", "Quoted CreatedAt", "Quoted Text"
+        "Quoted DID", "Quoted Handle", "Quoted Display Name", "Quoted CreatedAt", "Quoted Text",
+        "Image Links",  # New column for image links
+        "General Links"  # New column for general links
     ]
 
     reply_columns = []
@@ -217,17 +233,16 @@ def save_to_csv(data, filename):
         dict_writer.writerows(data)
     print(f"Data saved to {filename}")
 
-
 # Main script
 if __name__ == "__main__":
-    query = "TIL"
+    query = "this is fake"
     sort = "latest"
     lang = "en"
     limit = 100
 
     # Set up date ranges
-    start_date = datetime(2024, 11, 7)
-    end_date = datetime(2024, 11, 14)
+    start_date = datetime(2023, 7, 1)
+    end_date = datetime(2024, 12, 19)
     delta = timedelta(days=1)  # 1-day intervals
 
     all_posts = []
@@ -256,5 +271,5 @@ if __name__ == "__main__":
         current_date += delta  # Move to the next day
 
     # Save all data to CSV
-    save_to_csv(all_posts, "bluesky_TIL.csv")
+    save_to_csv(all_posts, "bluesky_fake.csv")
     print(f"Script complete. Total posts fetched: {len(all_posts)}")
