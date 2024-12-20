@@ -1,6 +1,5 @@
-import requests
+import requests # type: ignore
 import csv
-from dateutil.parser import isoparse
 from datetime import datetime, timedelta
 import time
 
@@ -28,28 +27,96 @@ def search_bluesky_posts(query, sort="latest", since=None, until=None, lang=None
         print(f"Network error occurred: {e}")
         return [], None
 
-# Function to save cleaned data to CSV
-def save_to_csv(data, filename):
-    keys = [
-        "DID", "Handle", "Display Name", "CreatedAt", "Text", 
-        "Article Title", "Article Link", "ReplyCount", 
-        "RepostCount", "LikeCount", "QuoteCount", "IndexedAt"
-    ]
-    with open(filename, "w", newline="", encoding="utf-8") as output_file:
-        dict_writer = csv.DictWriter(output_file, fieldnames=keys)
-        dict_writer.writeheader()
-        dict_writer.writerows(data)
-    print(f"Data saved to {filename}")
+# Function to fetch thread details, including parent or quoted posts, and replies
+def fetch_thread_details(uri, fetch_replies=False):
+    if not uri:
+        return {
+            "DID": "",
+            "Handle": "",
+            "Display Name": "",
+            "CreatedAt": "",
+            "Text": "",
+            "ReplyCount": 0,
+            "RepostCount": 0,
+            "LikeCount": 0,
+            "QuoteCount": 0,
+            "Replies": []
+        }
+    url = "https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread"
+    params = {"uri": uri}
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            thread = response.json()
+            if "thread" in thread and "post" in thread["thread"]:
+                post = thread["thread"]["post"]
+                record = post.get("record", {})
+                author = post.get("author", {})
 
-# Function to process and clean posts
+                replies = []
+                if fetch_replies and "replies" in thread["thread"]:
+                    for reply in thread["thread"]["replies"][:20]:  # Limit to 20 replies
+                        reply_post = reply.get("post", {})
+                        reply_record = reply_post.get("record", {})
+                        reply_author = reply_post.get("author", {})
+                        replies.append({
+                            "DID": reply_author.get("did", ""),
+                            "Handle": reply_author.get("handle", ""),
+                            "Display Name": reply_author.get("displayName", ""),
+                            "CreatedAt": reply_record.get("createdAt", ""),
+                            "Text": reply_record.get("text", "")
+                        })
+
+                return {
+                    "DID": author.get("did", ""),
+                    "Handle": author.get("handle", ""),
+                    "Display Name": author.get("displayName", ""),
+                    "CreatedAt": record.get("createdAt", ""),
+                    "Text": record.get("text", ""),
+                    "ReplyCount": post.get("replyCount", 0),
+                    "RepostCount": post.get("repostCount", 0),
+                    "LikeCount": post.get("likeCount", 0),
+                    "QuoteCount": post.get("quoteCount", 0),
+                    "Replies": replies
+                }
+        else:
+            print(f"Skipping URI {uri} due to status code {response.status_code}")
+            return {
+                "DID": "",
+                "Handle": "",
+                "Display Name": "",
+                "CreatedAt": "",
+                "Text": "",
+                "ReplyCount": 0,
+                "RepostCount": 0,
+                "LikeCount": 0,
+                "QuoteCount": 0,
+                "Replies": []
+            }
+    except requests.exceptions.RequestException as e:
+        print(f"Skipping URI {uri} due to network error: {e}")
+        return {
+            "DID": "",
+            "Handle": "",
+            "Display Name": "",
+            "CreatedAt": "",
+            "Text": "",
+            "ReplyCount": 0,
+            "RepostCount": 0,
+            "LikeCount": 0,
+            "QuoteCount": 0,
+            "Replies": []
+        }
+
+# Function to process posts
+# Includes the thread details: parent post (if reply), quoted post (if quote), and up to 20 replies
 def process_posts(posts):
     cleaned_data = []
     for post in posts:
         record = post.get("record", {})
         author = post.get("author", {})
-        embed = record.get("embed", {})
 
-        # Extract fields safely
+        # Extract main post fields
         did = author.get("did", "")
         handle = author.get("handle", "")
         display_name = author.get("displayName", "")
@@ -59,43 +126,108 @@ def process_posts(posts):
         repost_count = post.get("repostCount", 0)
         like_count = post.get("likeCount", 0)
         quote_count = post.get("quoteCount", 0)
-        indexed_at = post.get("indexedAt", "")
 
-        # Extract external embed (title and URI)
-        article_title = ""
-        article_link = ""
-        if embed.get("$type") == "app.bsky.embed.external#view":
-            external = embed.get("external", {})
-            article_title = external.get("title", "")
-            article_link = external.get("uri", "")
+        # Fetch parent or quoted post details
+        reply_to = record.get("reply", {}).get("parent", {}).get("uri", "")
+        quoted_post = record.get("embed", {}).get("quoted", {}).get("post", {}).get("uri", "")
 
-        # Append the cleaned data
-        cleaned_data.append({
+        parent_details = fetch_thread_details(reply_to) if reply_to else {
+            "DID": "",
+            "Handle": "",
+            "Display Name": "",
+            "CreatedAt": "",
+            "Text": "",
+            "ReplyCount": 0,
+            "RepostCount": 0,
+            "LikeCount": 0,
+            "QuoteCount": 0
+        }
+
+        quoted_details = fetch_thread_details(quoted_post) if quoted_post else {
+            "DID": "",
+            "Handle": "",
+            "Display Name": "",
+            "CreatedAt": "",
+            "Text": "",
+            "ReplyCount": 0,
+            "RepostCount": 0,
+            "LikeCount": 0,
+            "QuoteCount": 0
+        }
+
+        # Fetch replies for the current post
+        thread_details = fetch_thread_details(post.get("uri"), fetch_replies=True)
+        replies = thread_details.get("Replies", [])
+
+        # Prepare base data for the main post
+        post_data = {
             "DID": did,
             "Handle": handle,
             "Display Name": display_name,
             "CreatedAt": created_at,
             "Text": text,
-            "Article Title": article_title,
-            "Article Link": article_link,
             "ReplyCount": reply_count,
             "RepostCount": repost_count,
             "LikeCount": like_count,
             "QuoteCount": quote_count,
-            "IndexedAt": indexed_at,
-        })
+            "Parent DID": parent_details["DID"],
+            "Parent Handle": parent_details["Handle"],
+            "Parent Display Name": parent_details["Display Name"],
+            "Parent CreatedAt": parent_details["CreatedAt"],
+            "Parent Text": parent_details["Text"],
+            "Quoted DID": quoted_details["DID"],
+            "Quoted Handle": quoted_details["Handle"],
+            "Quoted Display Name": quoted_details["Display Name"],
+            "Quoted CreatedAt": quoted_details["CreatedAt"],
+            "Quoted Text": quoted_details["Text"]
+        }
+
+        # Add replies as separate fields
+        for i, reply in enumerate(replies):
+            post_data[f"Reply_{i+1}_DID"] = reply.get("DID", "")
+            post_data[f"Reply_{i+1}_Handle"] = reply.get("Handle", "")
+            post_data[f"Reply_{i+1}_Display Name"] = reply.get("Display Name", "")
+            post_data[f"Reply_{i+1}_CreatedAt"] = reply.get("CreatedAt", "")
+            post_data[f"Reply_{i+1}_Text"] = reply.get("Text", "")
+
+        # Append the cleaned data
+        cleaned_data.append(post_data)
     return cleaned_data
+
+# Function to save cleaned data to CSV
+def save_to_csv(data, filename):
+    # Prepare column headers dynamically to account for replies
+    base_columns = [
+        "DID", "Handle", "Display Name", "CreatedAt", "Text", "ReplyCount", "RepostCount", "LikeCount", "QuoteCount",
+        "Parent DID", "Parent Handle", "Parent Display Name", "Parent CreatedAt", "Parent Text",
+        "Quoted DID", "Quoted Handle", "Quoted Display Name", "Quoted CreatedAt", "Quoted Text"
+    ]
+
+    reply_columns = []
+    for i in range(1, 21):  # For up to 20 replies
+        reply_columns.extend([
+            f"Reply_{i}_DID", f"Reply_{i}_Handle", f"Reply_{i}_Display Name", f"Reply_{i}_CreatedAt", f"Reply_{i}_Text"
+        ])
+
+    all_columns = base_columns + reply_columns
+
+    with open(filename, "w", newline="", encoding="utf-8") as output_file:
+        dict_writer = csv.DictWriter(output_file, fieldnames=all_columns)
+        dict_writer.writeheader()
+        dict_writer.writerows(data)
+    print(f"Data saved to {filename}")
+
 
 # Main script
 if __name__ == "__main__":
-    query = "UnitedHealthcare"
+    query = "TIL"
     sort = "latest"
     lang = "en"
     limit = 100
 
     # Set up date ranges
-    start_date = datetime(2024, 12, 4)
-    end_date = datetime(2024, 12, 17)
+    start_date = datetime(2024, 11, 7)
+    end_date = datetime(2024, 12, 18)
     delta = timedelta(days=1)  # 1-day intervals
 
     all_posts = []
@@ -124,5 +256,5 @@ if __name__ == "__main__":
         current_date += delta  # Move to the next day
 
     # Save all data to CSV
-    save_to_csv(all_posts, "bluesky_all_posts_with_articles.csv")
+    save_to_csv(all_posts, "bluesky_TIL.csv")
     print(f"Script complete. Total posts fetched: {len(all_posts)}")
